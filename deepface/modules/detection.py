@@ -218,7 +218,6 @@ def detect_faces(
 
         - confidence (float): The confidence score associated with the detected face.
     """
-    height, width, _ = img.shape
     face_detector: Detector = modeling.build_model(
         task="face_detector", model_name=detector_backend
     )
@@ -230,21 +229,6 @@ def detect_faces(
             "Overwritten it to 0."
         )
         expand_percentage = 0
-
-    # If faces are close to the upper boundary, alignment move them outside
-    # Add a black border around an image to avoid this.
-    height_border = int(0.5 * height)
-    width_border = int(0.5 * width)
-    if align is True:
-        img = cv2.copyMakeBorder(
-            img,
-            height_border,
-            height_border,
-            width_border,
-            width_border,
-            cv2.BORDER_CONSTANT,
-            value=[0, 0, 0],  # Color of the border (black)
-        )
 
     # find facial areas of given image
     facial_areas = face_detector.detect_faces(img)
@@ -260,8 +244,6 @@ def detect_faces(
             img=img,
             align=align,
             expand_percentage=expand_percentage,
-            width_border=width_border,
-            height_border=height_border,
         )
         for facial_area in facial_areas
     ]
@@ -272,8 +254,6 @@ def expand_and_align_face(
     img: np.ndarray,
     align: bool,
     expand_percentage: int,
-    width_border: int,
-    height_border: int,
 ) -> DetectedFace:
     x = facial_area.x
     y = facial_area.y
@@ -301,29 +281,17 @@ def expand_and_align_face(
     detected_face = img[int(y) : int(y + h), int(x) : int(x + w)]
     # align original image, then find projection of detected face area after alignment
     if align is True:  # and left_eye is not None and right_eye is not None:
-        aligned_img, angle = align_img_wrt_eyes(img=img, left_eye=left_eye, right_eye=right_eye)
+        processed_face, new_x, new_y = alignment_preprocess(img=img, facial_area=(x,y,w,h))
+        aligned_img, angle = align_img_wrt_eyes(img=processed_face, left_eye=left_eye, right_eye=right_eye)
 
         rotated_x1, rotated_y1, rotated_x2, rotated_y2 = project_facial_area(
-            facial_area=(x, y, x + w, y + h), angle=angle, size=(img.shape[0], img.shape[1])
+            facial_area=(new_x, new_y, new_x + w, new_y + h),
+            angle=angle, 
+            size=(processed_face.shape[0], processed_face.shape[1])
         )
         detected_face = aligned_img[
             int(rotated_y1) : int(rotated_y2), int(rotated_x1) : int(rotated_x2)
         ]
-
-        # restore x, y, le and re before border added
-        x = x - width_border
-        y = y - height_border
-        # w and h will not change
-        if left_eye is not None:
-            left_eye = (left_eye[0] - width_border, left_eye[1] - height_border)
-        if right_eye is not None:
-            right_eye = (right_eye[0] - width_border, right_eye[1] - height_border)
-        if nose is not None:
-            nose = (nose[0] - width_border, nose[1] - height_border)
-        if mouth_left is not None:
-            mouth_left = (mouth_left[0] - width_border, mouth_left[1] - height_border)
-        if mouth_right is not None:
-            mouth_right = (mouth_right[0] - width_border, mouth_right[1] - height_border)
 
     return DetectedFace(
         img=detected_face,
@@ -341,6 +309,55 @@ def expand_and_align_face(
         ),
         confidence=confidence,
     )
+
+
+def alignment_preprocess(
+    img: np.ndarray,
+    facial_area: Tuple[int, int, int, int]
+) -> Tuple[np.ndarray, int, int]:
+    """
+    Expand the facial region to ensure alignment does not shift the face outside the image.
+
+    This function doubles the height and width of the face region, and adds black pixels if necessary.
+
+    Args:
+    ----
+        img (np.ndarray): pre-loaded image with detected face
+        facial_area (tuple of int): Representing the (x, y, w, h) of the facial area.
+    Returns:
+    ----
+        expanded_face (np.ndarray): expanded facial image
+        new_x (int): adjusted x-coordinates relative to the expanded region
+        new_y (int): adjusted y-coordinates relative to the expanded region
+    """
+    x, y, w, h = facial_area
+    width_border = int(0.5 * w)
+    height_border = int(0.5 * h)
+
+    # create a black image
+    expanded_image = np.full(
+        (h + 2*height_border, w + 2*width_border, img.shape[2]),
+        (0,0,0),
+        dtype=img.dtype
+    )
+
+    # crop region from original image
+    x1 = max(0, x - width_border)
+    y1 = max(0, y - height_border)
+    x2 = min(img.shape[1], x + w + width_border)
+    y2 = min(img.shape[0], y + h + height_border)
+    cropped_region = img[y1:y2, x1:x2]
+
+    # map the cropped region to the expanded image
+    start_x = max(0, width_border - x)
+    start_y = max(0, height_border - y)
+    expanded_image[
+        start_y:start_y + cropped_region.shape[0], 
+        start_x:start_x + cropped_region.shape[1]
+    ] = cropped_region
+    new_x, new_y = width_border, height_border
+
+    return expanded_image, new_x, new_y
 
 
 def align_img_wrt_eyes(

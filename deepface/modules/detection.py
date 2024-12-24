@@ -282,11 +282,13 @@ def expand_and_align_face(
     # align original image, then find projection of detected face area after alignment
     if align is True:  # and left_eye is not None and right_eye is not None:
         processed_face, new_x, new_y = alignment_preprocess(img=img, facial_area=(x,y,w,h))
-        aligned_img, angle = align_img_wrt_eyes(img=processed_face, left_eye=left_eye, right_eye=right_eye)
+        aligned_img, angle = align_img_wrt_eyes(
+            img=processed_face, left_eye=left_eye, right_eye=right_eye
+        )
 
         rotated_x1, rotated_y1, rotated_x2, rotated_y2 = project_facial_area(
             facial_area=(new_x, new_y, new_x + w, new_y + h),
-            angle=angle, 
+            angle=angle,
             size=(processed_face.shape[0], processed_face.shape[1])
         )
         detected_face = aligned_img[
@@ -318,17 +320,19 @@ def alignment_preprocess(
     """
     Expand the facial region to ensure alignment does not shift the face outside the image.
 
-    This function doubles the height and width of the face region, and adds black pixels if necessary.
+    This function doubles the height and width of the face region,
+    and adds black pixels if necessary.
 
     Args:
     ----
-        img (np.ndarray): pre-loaded image with detected face
-        facial_area (tuple of int): Representing the (x, y, w, h) of the facial area.
+    - img (np.ndarray): pre-loaded image with detected face
+    - facial_area (tuple of int): Representing the (x, y, w, h) of the facial area.
+
     Returns:
     ----
-        expanded_face (np.ndarray): expanded facial image
-        new_x (int): adjusted x-coordinates relative to the expanded region
-        new_y (int): adjusted y-coordinates relative to the expanded region
+    - expanded_face (np.ndarray): expanded facial image
+    - new_x (int): adjusted x-coordinates relative to the expanded region
+    - new_y (int): adjusted y-coordinates relative to the expanded region
     """
     x, y, w, h = facial_area
     width_border = int(0.5 * w)
@@ -352,7 +356,7 @@ def alignment_preprocess(
     start_x = max(0, width_border - x)
     start_y = max(0, height_border - y)
     expanded_image[
-        start_y:start_y + cropped_region.shape[0], 
+        start_y:start_y + cropped_region.shape[0],
         start_x:start_x + cropped_region.shape[1]
     ] = cropped_region
     new_x, new_y = width_border, height_border
